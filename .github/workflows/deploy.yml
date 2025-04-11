@@ -40,8 +40,8 @@ jobs:
     - name: Build, tag, and push
       run: |
         docker build -t kumar-final-api .
-        docker tag kumar-final-api:latest 783764594790.dkr.ecr.us-east-1.amazonaws.com/kumar-final-api:latest
-        docker push 783764594790.dkr.ecr.us-east-1.amazonaws.com/kumar-final-api:latest
+        docker tag kumar-final-api 783764594790.dkr.ecr.us-east-1.amazonaws.com/kumar-final-api
+        docker push 783764594790.dkr.ecr.us-east-1.amazonaws.com/kumar-final-api
 
     # Verify ECS service exists
     - name: Verify ECS service
