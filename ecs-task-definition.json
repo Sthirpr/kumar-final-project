@@ -1,15 +1,16 @@
 {
-  "family": "flask-api-task",
+  "family": "flask-task",
   "networkMode": "awsvpc",
   "executionRoleArn": "arn:aws:iam::783764594790:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
-      "name": "flask-api",
+      "name": "flask-container",
       "image": "783764594790.dkr.ecr.us-east-1.amazonaws.com/flask-api:latest",
       "essential": true,
       "portMappings": [
         {
           "containerPort": 3000,
+          "hostPort": 3000,
           "protocol": "tcp"
         }
       ],
