@@ -1,0 +1,31 @@
+{
+  "family": "flask-api-task",
+  "networkMode": "awsvpc",
+  "executionRoleArn": "arn:aws:iam::783764594790:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "flask-api",
+      "image": "783764594790.dkr.ecr.us-east-1.amazonaws.com/flask-api:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/flask-api",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512"
+}
