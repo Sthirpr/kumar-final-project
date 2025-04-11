@@ -1,49 +1,64 @@
-name: Deploy Flask App to ECS
+name: Build and Deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: flask-app
-  ECS_CLUSTER: flask-cluster
-  ECS_SERVICE: flask-service
-  ECS_TASK_DEFINITION: flask-task
-  CONTAINER_NAME: flask-container
+  AWS_ACCOUNT_ID: "783764594790"  # Your AWS account ID
+  ECR_REPOSITORY: "flask-app"     # Must match your ECR repo name
+  ECS_CLUSTER: "flask-cluster"
+  ECS_SERVICE: "flask-service"
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
-    - name: Checkout code
+    # 1. Checkout code
+    - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Configure AWS credentials
+    # 2. Configure AWS credentials
+    - name: Configure AWS
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Log in to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
-
-    - name: Build and push Docker image to ECR
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+    # 3. Create ECR repo if missing
+    - name: Ensure ECR Repository
       run: |
-        IMAGE_URI=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
-        docker build -t $IMAGE_URI .
-        docker push $IMAGE_URI
+        aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} || \
+        aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }}
 
+    # 4. Login to ECR
+    - name: Login to ECR
+      run: |
+        aws ecr get-login-password | docker login \
+          --username AWS \
+          --password-stdin \
+          ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+    # 5. Build and push image
+    - name: Build and Push
+      run: |
+        docker build -t ${{ env.ECR_REPOSITORY }} .
+        docker tag ${{ env.ECR_REPOSITORY }}:latest \
+          ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
+        docker push \
+          ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
+
+    # 6. Deploy to ECS
     - name: Deploy to ECS
-      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-      with:
-        task-definition: ecs-task-definition.json
-        service: ${{ env.ECS_SERVICE }}
-        cluster: ${{ env.ECS_CLUSTER }}
-        wait-for-service-stability: true
+      run: |
+        aws ecs update-service \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --service ${{ env.ECS_SERVICE }} \
+          --force-new-deployment \
+          --region ${{ env.AWS_REGION }}
