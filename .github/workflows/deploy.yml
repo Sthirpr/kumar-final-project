@@ -1,84 +1,49 @@
-name: Build and Deploy
+name: Deploy Flask App to ECS
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: kumar-final-api
-  ECS_CLUSTER: kumar-final-cluster
-  ECS_SERVICE: kumar-final-service
+  ECR_REPOSITORY: flask-app
+  ECS_CLUSTER: flask-cluster
+  ECS_SERVICE: flask-service
+  ECS_TASK_DEFINITION: flask-task
+  CONTAINER_NAME: flask-container
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
-    # Checkout code
-    - name: Checkout repository
+    - name: Checkout code
       uses: actions/checkout@v4
 
-    # Configure AWS credentials
-    - name: Configure AWS Credentials
+    - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    # Login to ECR
-    - name: Login to Amazon ECR
+    - name: Log in to Amazon ECR
       id: login-ecr
-      run: |
-        aws ecr get-login-password | docker login --username AWS --password-stdin 783764594790.dkr.ecr.us-east-1.amazonaws.com
+      uses: aws-actions/amazon-ecr-login@v2
 
-    # Build and push image
-    - name: Build, tag, and push
+    - name: Build and push Docker image to ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       run: |
-        docker build -t kumar-final-api .
-        docker tag kumar-final-api 783764594790.dkr.ecr.us-east-1.amazonaws.com/kumar-final-api
-        docker push 783764594790.dkr.ecr.us-east-1.amazonaws.com/kumar-final-api
+        IMAGE_URI=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+        docker build -t $IMAGE_URI .
+        docker push $IMAGE_URI
 
-    # Verify ECS service exists
-    - name: Verify ECS service
-      run: |
-        aws ecs describe-services \
-          --cluster ${{ env.ECS_CLUSTER }} \
-          --services ${{ env.ECS_SERVICE }} \
-          --region ${{ env.AWS_REGION }}
-
-    # Force new deployment
     - name: Deploy to ECS
-      run: |
-        aws ecs update-service \
-          --cluster ${{ env.ECS_CLUSTER }} \
-          --service ${{ env.ECS_SERVICE }} \
-          --force-new-deployment \
-          --region ${{ env.AWS_REGION }}
-
-    # Verify deployment
-    - name: Check deployment status
-      run: |
-        echo "Waiting for deployment to stabilize..."
-        aws ecs wait services-stable \
-          --cluster ${{ env.ECS_CLUSTER }} \
-          --services ${{ env.ECS_SERVICE }} \
-          --region ${{ env.AWS_REGION }}
-        echo "Deployment successful!"
-
-    # Get load balancer URL
-    - name: Get load balancer URL
-      run: |
-        LB_DNS=$(aws elbv2 describe-load-balancers \
-          --query "LoadBalancers[?contains(LoadBalancerName,'kumar-lb')].DNSName" \
-          --output text \
-          --region ${{ env.AWS_REGION }})
-        echo "Load Balancer URL: http://$LB_DNS"
-        echo "Test endpoints:"
-        echo "http://$LB_DNS/"
-        echo "http://$LB_DNS/host"
-        echo "http://$LB_DNS/ip"
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ecs-task-definition.json
+        service: ${{ env.ECS_SERVICE }}
+        cluster: ${{ env.ECS_CLUSTER }}
+        wait-for-service-stability: true
