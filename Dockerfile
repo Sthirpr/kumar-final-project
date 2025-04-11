@@ -1,28 +1,22 @@
-# Use the official Python image with the appropriate version
-FROM python:3.9-slim
+# Use a lightweight Python base image
+FROM python:3.11-slim
 
-# Set working directory
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Set work directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    python3-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
+# Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app.py .
 
-# Modify the main route as required in the assignment
-RUN sed -i "s/Hello Cloud! by Kumar/Welcome to Kumar Final Test API Server/" app.py
+# Expose the Flask app port
+EXPOSE 3000
 
-# Use Gunicorn as the WSGI server
-RUN pip install gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
-
-# Expose port 5000
-EXPOSE 5000
+# Start the app using gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:3000", "app:app"]
