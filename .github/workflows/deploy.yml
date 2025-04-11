@@ -1,4 +1,4 @@
-name: Build and Deploy
+name: Build and Deploy Flask App
 
 on:
   push:
@@ -6,10 +6,10 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  AWS_ACCOUNT_ID: "783764594790"  # Your AWS account ID
-  ECR_REPOSITORY: "flask-app"     # Must match your ECR repo name
-  ECS_CLUSTER: "flask-cluster"
-  ECS_SERVICE: "flask-service"
+  ECR_REPOSITORY: flask-app
+  ECS_CLUSTER: flask-cluster
+  ECS_SERVICE: flask-service
+  CONTAINER_PORT: 3000
 
 jobs:
   deploy:
@@ -19,46 +19,56 @@ jobs:
       contents: read
 
     steps:
-    # 1. Checkout code
-    - name: Checkout
+    # Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v4
 
-    # 2. Configure AWS credentials
-    - name: Configure AWS
+    # Configure AWS credentials
+    - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    # 3. Create ECR repo if missing
-    - name: Ensure ECR Repository
+    # Login to ECR
+    - name: Login to Amazon ECR
+      id: login-ecr
       run: |
-        aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} || \
-        aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }}
-
-    # 4. Login to ECR
-    - name: Login to ECR
-      run: |
-        aws ecr get-login-password | docker login \
+        aws ecr get-login-password --region $AWS_REGION | docker login \
           --username AWS \
-          --password-stdin \
-          ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+          --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      env:
+        ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
-    # 5. Build and push image
-    - name: Build and Push
+    # Build, tag, and push image to Amazon ECR
+    - name: Build, Tag, and Push Docker Image
       run: |
-        docker build -t ${{ env.ECR_REPOSITORY }} .
-        docker tag ${{ env.ECR_REPOSITORY }}:latest \
-          ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
-        docker push \
-          ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
+        docker build -t $ECR_REPOSITORY .
+        docker tag $ECR_REPOSITORY:latest $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+        docker push $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+      env:
+        ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
-    # 6. Deploy to ECS
+    # Deploy to ECS
     - name: Deploy to ECS
       run: |
         aws ecs update-service \
-          --cluster ${{ env.ECS_CLUSTER }} \
-          --service ${{ env.ECS_SERVICE }} \
+          --cluster $ECS_CLUSTER \
+          --service $ECS_SERVICE \
           --force-new-deployment \
-          --region ${{ env.AWS_REGION }}
+          --region $AWS_REGION
+
+    # Verify deployment
+    - name: Verify Deployment
+      run: |
+        echo "Waiting for service to stabilize..."
+        aws ecs wait services-stable \
+          --cluster $ECS_CLUSTER \
+          --service $ECS_SERVICE \
+          --region $AWS_REGION
+        echo "Deployment successful!"
+
+        # Get ALB DNS name from Terraform output
+        ALB_DNS=$(terraform output -raw alb_dns_name)
+        echo "Application URL: http://$ALB_DNS"
